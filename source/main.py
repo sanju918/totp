@@ -1,7 +1,7 @@
-import hmac
-import time
-import base64
 import logging
+import pyotp
+
+from colorama import init, Fore, Style
 from dotenv import dotenv_values, find_dotenv
 
 
@@ -15,26 +15,6 @@ def setup_logging():
             logging.StreamHandler()
         ]
     )
-
-
-def totp(key: bytes) -> str:
-    """
-    Calculate TOTP using the provided key.
-
-    Args:
-        key (bytes): The shared secret key in bytes.
-
-    Returns:
-        str: The generated TOTP code as a 6-digit string.
-    """
-    now = int(time.time() // 30)
-    msg = now.to_bytes(8, "big")
-    digest = hmac.new(key, msg, "sha1").digest()
-    offset = digest[19] & 0xF
-    code = digest[offset: offset + 4]
-    code = int.from_bytes(code, "big") & 0x7FFFFFFF
-    code = code % 1000000
-    return "{:06d}".format(code)
 
 
 def load_env_file(file_path: str) -> dict:
@@ -59,6 +39,7 @@ def load_env_file(file_path: str) -> dict:
 
 
 if __name__ == "__main__":
+    init(autoreset=True)  # Initialize colorama for automatic reset of styles
     setup_logging()
 
     # Load environment variables
@@ -70,7 +51,7 @@ if __name__ == "__main__":
         exit(1)
 
     # Print all environment keys as apps
-    print("Your Apps:")
+    print(Fore.CYAN + "Your Apps:")
     keys = list(envs.keys())
     for i, key in enumerate(keys, start=1):
         print(f"{i}. {key}")
@@ -82,16 +63,18 @@ if __name__ == "__main__":
             selected_key = keys[selection]
             key_value = envs[selected_key]
             try:
-                key_bytes = base64.b32decode(key_value)
-                totp_ = totp(key_bytes)
-                print(f"TOTP for {selected_key}: {totp_}")
+                # Using pyotp to generate the TOTP code
+                totp = pyotp.TOTP(key_value)
+                otp = totp.now()
+                print("\n" + Fore.GREEN + Style.BRIGHT + f"TOTP for {selected_key}:",
+                      Fore.YELLOW + Style.BRIGHT + f"{otp}\n")
                 logging.info(f"Successfully generated TOTP for {selected_key}.")
-            except base64.binascii.Error as e:
-                logging.error(f"Decoding error for key {selected_key}: {e}")
-                print("Error: The key is not a valid base32 encoded string.")
+            except Exception as e:
+                logging.error(f"Error generating TOTP for key {selected_key}: {e}")
+                print(Fore.RED + "Error: Unable to generate TOTP for the selected key.")
         else:
             logging.warning("User made an invalid selection.")
-            print("Invalid selection. Please enter a number from the list.")
+            print(Fore.RED + "Invalid selection. Please enter a number from the list.")
     except ValueError:
         logging.warning("User input was not a valid number.")
-        print("Invalid input. Please enter a number.")
+        print(Fore.RED + "Invalid input. Please enter a number.")
